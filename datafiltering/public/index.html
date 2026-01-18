@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excel Upload → Preview → Ingest to MongoDB Atlas</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #111; }
+      .card { max-width: 980px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+      input[type=file] { padding: 8px; border: 1px solid #e5e7eb; border-radius: 8px; }
+      button { padding: 10px 14px; border-radius: 10px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
+      button.primary { background: #111827; color: #fff; border-color: #111827; }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .muted { color: #6b7280; font-size: 14px; }
+      .status { margin-top: 10px; padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; white-space: pre-wrap; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+        font-size: 13px;
+      }
+
+      .tablewrap {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        margin-top: 12px;
+      }
+
+      .tablewrap table {
+        margin-top: 0;
+        min-width: 1200px;
+      }
+
+      td.truncate {
+        max-width: 420px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      th, td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; font-size: 14px; }
+      th { background: #f9fafb; }
+      .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #e5e7eb; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h2>Excel Upload → Preview → Ingest to MongoDB Atlas</h2>
+    <p class="muted">
+      Upload an <span class="pill">.xlsx</span> or <span class="pill">.xlsm</span>. The file is saved to <code>datafiltering/uploads/</code>,
+      then you can preview rows and ingest into MongoDB.
+    </p>
+
+    <div class="card">
+      <div class="row">
+        <input id="file" type="file" accept=".xlsx,.xlsm" />
+        <button id="btnUpload" class="primary">Upload</button>
+        <button id="btnPreview" disabled>Preview</button>
+        <button id="btnIngest" disabled>Ingest to MongoDB</button>
+        <input id="sheetName" placeholder="Sheet name (optional)" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+      </div>
+
+      <div style="margin-top: 12px; padding: 12px; border: 1px dashed #d1d5db; border-radius: 12px; background: #fafafa;" id="dropzone">
+        <div class="muted" style="margin-bottom: 8px;">
+          Bulk upload: drag & drop up to 20 Excel files here, or select them.
+        </div>
+        <div class="row">
+          <input id="files" type="file" accept=".xlsx,.xlsm" multiple />
+          <button id="btnBulkUpload" class="primary">Bulk Upload + Auto Ingest</button>
+          <span id="bulkLoader" class="muted" style="display:none;">Uploading / ingesting...</span>
+        </div>
+        <div id="bulkStatus" class="status" style="display:none"></div>
+      </div>
+
+      <hr style="margin: 16px 0; border: none; border-top: 1px solid #e5e7eb;" />
+
+      <div class="row">
+        <input id="qName" placeholder="Search name" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qEmail" placeholder="Search email" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qPhone" placeholder="Search phone" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <select id="pageSize" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;">
+          <option value="50" selected>50 / page</option>
+          <option value="100">100 / page</option>
+          <option value="200">200 / page</option>
+        </select>
+        <button id="btnSearch">Search DB</button>
+      </div>
+
+      <div class="row" style="margin-top: 10px;">
+        <select id="qDesignation" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px; min-width: 220px;">
+          <option value="">Designation (all)</option>
+        </select>
+        <input id="qCompany" placeholder="Company / Hospital" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qLocation" placeholder="Location" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qSpecialization" placeholder="Specialization / Department" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+      </div>
+
+      <div class="row" style="margin-top: 10px;">
+        <input id="qSkill" placeholder="Skill" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qExpMin" placeholder="Experience min (years)" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qExpMax" placeholder="Experience max (years)" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qDescription" placeholder="Description contains" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+      </div>
+
+      <div id="meta" class="status" style="display:none"></div>
+
+      <div id="job" class="status" style="display:none"></div>
+
+      <div id="preview"></div>
+
+      <div id="dbresults"></div>
+
+      <div class="row" style="margin-top: 10px;">
+        <button id="btnPrev">Prev</button>
+        <button id="btnNext">Next</button>
+        <div id="pageMeta" class="muted"></div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      const state = {
+        storedPath: null,
+        jobId: null,
+        pollTimer: null,
+        pageOffset: 0,
+        pageLimit: 50,
+        lastTotal: 0,
+        bulk: []
+      };
+
+      function show(el, text) {
+        el.style.display = 'block';
+        el.textContent = text;
+      }
+
+      async function searchDb() {
+        state.pageOffset = 0;
+        await loadCandidates();
+      }
+
+      async function loadCandidates() {
+        const name = $('qName').value.trim();
+        const email = $('qEmail').value.trim();
+        const phone = $('qPhone').value.trim();
+        const designation = $('qDesignation').value.trim();
+        const company = $('qCompany').value.trim();
+        const location = $('qLocation').value.trim();
+        const specialization = $('qSpecialization').value.trim();
+        const skill = $('qSkill').value.trim();
+        const experienceMin = $('qExpMin').value.trim();
+        const experienceMax = $('qExpMax').value.trim();
+        const description = $('qDescription').value.trim();
+
+        const params = new URLSearchParams();
+        if (name) params.set('name', name);
+        if (email) params.set('email', email);
+        if (phone) params.set('phone', phone);
+        if (designation) params.set('designation', designation);
+        if (company) params.set('company', company);
+        if (location) params.set('location', location);
+        if (specialization) params.set('specialization', specialization);
+        if (skill) params.set('skill', skill);
+        if (description) params.set('description', description);
+        if (experienceMin) params.set('experienceMin', experienceMin);
+        if (experienceMax) params.set('experienceMax', experienceMax);
+        params.set('limit', String(state.pageLimit));
+        params.set('offset', String(state.pageOffset));
+
+        const res = await fetch(`/api/candidates?${params.toString()}`);
+        const json = await res.json();
+        if (!res.ok) {
+          alert(json?.message || 'Search failed');
+          return;
+        }
+
+        state.lastTotal = Number(json.total || 0);
+
+        const container = $('dbresults');
+        container.innerHTML = '';
+        const title = document.createElement('div');
+        title.className = 'muted';
+        title.style.marginTop = '12px';
+        title.textContent = `DB Results: showing ${json.items.length} candidates (total: ${state.lastTotal})`;
+        container.appendChild(title);
+
+        container.appendChild(renderCandidates(json.items || []));
+
+        updatePager();
+      }
+
+      function updatePager() {
+        const start = state.lastTotal === 0 ? 0 : state.pageOffset + 1;
+        const end = Math.min(state.pageOffset + state.pageLimit, state.lastTotal);
+        $('pageMeta').textContent = state.lastTotal ? `Showing ${start}-${end} of ${state.lastTotal}` : 'No results';
+        $('btnPrev').disabled = state.pageOffset <= 0;
+        $('btnNext').disabled = state.pageOffset + state.pageLimit >= state.lastTotal;
+      }
+
+      function clearPreview() {
+        $('preview').innerHTML = '';
+      }
+
+      function renderTable(header, rows) {
+        const cols = header && header.length ? header : (rows[0] ? Object.keys(rows[0]) : []);
+        const wrap = document.createElement('div');
+        wrap.className = 'tablewrap';
+        const table = document.createElement('table');
+        const thead = document.createElement('thead');
+        const trh = document.createElement('tr');
+        for (const c of cols) {
+          const th = document.createElement('th');
+          th.textContent = c;
+          trh.appendChild(th);
+        }
+        thead.appendChild(trh);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        for (const r of rows) {
+          const tr = document.createElement('tr');
+          for (const c of cols) {
+            const td = document.createElement('td');
+            const v = r[c];
+            const fullText = v == null ? '' : String(v);
+            td.textContent = fullText;
+            if (c === 'designation' || c === 'description') {
+              td.className = 'truncate';
+              td.title = fullText;
+            }
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        return wrap;
+      }
+
+      function truncateWords(text, wordLimit) {
+        const s = (text == null ? '' : String(text)).trim();
+        if (!s) return '';
+        const parts = s.split(/\s+/g).filter(Boolean);
+        if (parts.length <= wordLimit) return s;
+        return `${parts.slice(0, wordLimit).join(' ')}...`;
+      }
+
+      function renderCandidates(items) {
+        const rows = items.map((c) => {
+          const fullName = c?.profile?.fullName || '';
+          const desc = c?.profile?.description || '';
+          const email = c?.contacts?.emails?.[0] || '';
+          const phone = c?.contacts?.phones?.[0] || '';
+          const designation = c?.professional?.designation || '';
+          const company = c?.professional?.currentCompany || '';
+          const location = c?.professional?.location || '';
+          const experienceYears = c?.professional?.experienceYears ?? '';
+          const specialization = c?.professional?.specialization || '';
+          const qualification = c?.professional?.qualification || '';
+          return {
+            fullName,
+            email,
+            phone,
+            designation: truncateWords(designation, 25),
+            currentCompany: company,
+            location,
+            experienceYears,
+            specialization,
+            qualification,
+            description: truncateWords(desc, 25)
+          };
+        });
+        const header = [
+          'fullName',
+          'email',
+          'phone',
+          'designation',
+          'currentCompany',
+          'location',
+          'experienceYears',
+          'specialization',
+          'qualification',
+          'description'
+        ];
+        const table = renderTable(header, rows);
+        return table;
+      }
+
+      async function upload() {
+        const f = $('file').files[0];
+        if (!f) {
+          alert('Pick an Excel file first');
+          return;
+        }
+
+        $('btnUpload').disabled = true;
+        $('btnPreview').disabled = true;
+        $('btnIngest').disabled = true;
+        clearPreview();
+
+        const form = new FormData();
+        form.append('file', f);
+
+        const res = await fetch('/api/excel/upload', { method: 'POST', body: form });
+        const json = await res.json();
+        if (!res.ok) {
+          $('btnUpload').disabled = false;
+          alert(json?.message || 'Upload failed');
+          return;
+        }
+
+        state.storedPath = json.storedPath;
+        show($('meta'), JSON.stringify(json, null, 2));
+
+        $('btnUpload').disabled = false;
+        $('btnPreview').disabled = false;
+
+        // Auto-ingest after upload
+        await ingest();
+      }
+
+      async function bulkUploadAndIngest() {
+        const input = $('files');
+        const files = Array.from(input.files || []);
+        if (!files.length) {
+          alert('Select files first (up to 20)');
+          return;
+        }
+        if (files.length > 20) {
+          alert('Max 20 files per bulk upload');
+          return;
+        }
+
+        $('btnBulkUpload').disabled = true;
+        $('bulkLoader').style.display = 'inline';
+        show($('bulkStatus'), 'Uploading files...');
+
+        const form = new FormData();
+        for (const f of files) form.append('files', f);
+
+        const res = await fetch('/api/excel/upload/bulk', { method: 'POST', body: form });
+        const json = await res.json();
+        if (!res.ok) {
+          $('btnBulkUpload').disabled = false;
+          $('bulkLoader').style.display = 'none';
+          alert(json?.message || 'Bulk upload failed');
+          return;
+        }
+
+        state.bulk = (json.uploads || []).map((u) => ({
+          ...u,
+          status: 'uploaded',
+          jobId: null
+        }));
+
+        renderBulkStatus();
+
+        // Ingest sequentially to keep it simple and avoid overloading DB
+        for (let i = 0; i < state.bulk.length; i += 1) {
+          const item = state.bulk[i];
+          item.status = 'ingesting';
+          renderBulkStatus();
+
+          try {
+            const jobId = await startIngestForFile(item.storedPath);
+            item.jobId = jobId;
+            item.status = 'running';
+            renderBulkStatus();
+            await waitForJob(jobId);
+            item.status = 'completed';
+          } catch (e) {
+            item.status = 'failed';
+            item.error = e?.message ? String(e.message) : String(e);
+          }
+          renderBulkStatus();
+        }
+
+        $('btnBulkUpload').disabled = false;
+        $('bulkLoader').style.display = 'none';
+
+        await loadCandidates();
+      }
+
+      function renderBulkStatus() {
+        const el = $('bulkStatus');
+        el.style.display = 'block';
+        const lines = (state.bulk || []).map((b, idx) => {
+          const base = `${idx + 1}. ${b.filename} — ${b.status}`;
+          if (b.jobId) return `${base} (job: ${b.jobId})`;
+          if (b.error) return `${base} (error: ${b.error})`;
+          return base;
+        });
+        el.textContent = lines.join('\n');
+      }
+
+      async function startIngestForFile(filePath) {
+        const sheetName = $('sheetName').value.trim();
+        const res = await fetch('/api/excel/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filePath,
+            batchSize: 1000,
+            sheetName: sheetName || undefined
+          })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.message || 'Ingest failed');
+        return json.jobId;
+      }
+
+      async function waitForJob(jobId) {
+        while (true) {
+          const res = await fetch(`/api/excel/ingest/${encodeURIComponent(jobId)}`);
+          const json = await res.json();
+          if (!res.ok) throw new Error(json?.message || 'Job status failed');
+          if (json.status === 'completed') return json;
+          if (json.status === 'failed') throw new Error(json.errorMessage || 'Job failed');
+          await new Promise((r) => setTimeout(r, 900));
+        }
+      }
+
+      async function preview() {
+        if (!state.storedPath) return;
+        $('btnPreview').disabled = true;
+        clearPreview();
+
+        const sheetName = $('sheetName').value.trim();
+        const qs = new URLSearchParams();
+        qs.set('filePath', state.storedPath);
+        qs.set('limit', '25');
+        if (sheetName) qs.set('sheetName', sheetName);
+        const url = `/api/excel/preview?${qs.toString()}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!res.ok) {
+          $('btnPreview').disabled = false;
+          alert(json?.message || 'Preview failed');
+          return;
+        }
+
+        const table = renderTable(json.header, json.rows);
+        $('preview').appendChild(table);
+        $('btnPreview').disabled = false;
+      }
+
+      async function ingest() {
+        if (!state.storedPath) return;
+        $('btnIngest').disabled = true;
+
+        const sheetName = $('sheetName').value.trim();
+
+        const res = await fetch('/api/excel/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filePath: state.storedPath,
+            batchSize: 1000,
+            sheetName: sheetName || undefined
+          })
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          $('btnIngest').disabled = false;
+          alert(json?.message || 'Ingest failed');
+          return;
+        }
+
+        state.jobId = json.jobId;
+        show($('job'), `Job started: ${state.jobId}\nPolling status...`);
+
+        if (state.pollTimer) clearInterval(state.pollTimer);
+        state.pollTimer = setInterval(pollJob, 1000);
+      }
+
+      async function pollJob() {
+        if (!state.jobId) return;
+        const res = await fetch(`/api/excel/ingest/${state.jobId}`);
+        const json = await res.json();
+        if (!res.ok) {
+          show($('job'), JSON.stringify(json, null, 2));
+          return;
+        }
+
+        show($('job'), JSON.stringify(json, null, 2));
+
+        if (json.status === 'completed' || json.status === 'failed') {
+          clearInterval(state.pollTimer);
+          state.pollTimer = null;
+          $('btnIngest').disabled = false;
+
+          // Refresh list after ingestion completes
+          await loadCandidates();
+        }
+      }
+
+      $('btnUpload').addEventListener('click', () => upload().catch((e) => alert(e.message)));
+      $('btnPreview').addEventListener('click', () => preview().catch((e) => alert(e.message)));
+      $('btnIngest').addEventListener('click', () => ingest().catch((e) => alert(e.message)));
+      $('btnSearch').addEventListener('click', () => searchDb().catch((e) => alert(e.message)));
+      $('pageSize').addEventListener('change', () => {
+        state.pageLimit = Number($('pageSize').value) || 50;
+        state.pageOffset = 0;
+        loadCandidates().catch((e) => alert(e.message));
+      });
+      $('qDesignation').addEventListener('change', () => {
+        state.pageOffset = 0;
+        loadCandidates().catch((e) => alert(e.message));
+      });
+      $('btnBulkUpload').addEventListener('click', () => bulkUploadAndIngest().catch((e) => alert(e.message)));
+      $('btnPrev').addEventListener('click', () => {
+        state.pageOffset = Math.max(0, state.pageOffset - state.pageLimit);
+        loadCandidates().catch((e) => alert(e.message));
+      });
+      $('btnNext').addEventListener('click', () => {
+        state.pageOffset = state.pageOffset + state.pageLimit;
+        loadCandidates().catch((e) => alert(e.message));
+      });
+
+      // Load existing candidates on page load
+      loadCandidates().catch(() => {});
+
+      async function loadDesignationOptions() {
+        try {
+          const res = await fetch('/api/candidates/designations?limit=200');
+          const json = await res.json();
+          if (!res.ok) return;
+          const select = $('qDesignation');
+          const keep = select.value;
+          select.innerHTML = '<option value="">Designation (all)</option>';
+          for (const d of json.items || []) {
+            const opt = document.createElement('option');
+            opt.value = d;
+            opt.textContent = d;
+            select.appendChild(opt);
+          }
+          select.value = keep;
+        } catch {
+          // ignore
+        }
+      }
+
+      loadDesignationOptions().catch(() => {});
+
+      // Drag & drop support
+      const dropzone = $('dropzone');
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.style.background = '#f3f4f6';
+      });
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.style.background = '#fafafa';
+      });
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.style.background = '#fafafa';
+        const dtFiles = Array.from(e.dataTransfer.files || []).filter((f) => {
+          const n = String(f.name || '').toLowerCase();
+          return n.endsWith('.xlsx') || n.endsWith('.xlsm');
+        });
+        if (!dtFiles.length) return;
+
+        // Create a DataTransfer to set input.files
+        const dt = new DataTransfer();
+        for (const f of dtFiles.slice(0, 20)) dt.items.add(f);
+        $('files').files = dt.files;
+      });
+    </script>
+  </body>
+</html>
