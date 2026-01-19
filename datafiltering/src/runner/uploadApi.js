@@ -19,6 +19,19 @@ import { ImportCandidatesFromExcel } from '../application/importCandidatesFromEx
 const cfg = getConfig();
 const logger = pino({ level: cfg.logLevel || 'info' });
 
+function isMongoConfigError(err) {
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    msg.includes('missing mongodb_uri') ||
+    msg.includes('mongodb_uri') ||
+    msg.includes('auth') ||
+    msg.includes('authentication') ||
+    msg.includes('failed to connect') ||
+    msg.includes('server selection') ||
+    msg.includes('timed out')
+  );
+}
+
 let mongoClientPromise = null;
 async function getMongoClient() {
   if (mongoClientPromise) return mongoClientPromise;
@@ -29,6 +42,7 @@ async function getMongoClient() {
 
 async function getMongoDb() {
   const client = await getMongoClient();
+  if (!cfg.mongodbDb) throw new Error('Missing MONGODB_DB');
   return client.db(cfg.mongodbDb);
 }
 
@@ -206,6 +220,9 @@ app.get('/api/candidates/designations', async (req, res) => {
   const limit = Math.min(200, Math.max(1, Number(req.query.limit || 100)));
   try {
     const db = await getMongoDb();
+    if (!cfg.mongodbCandidatesCollection) {
+      throw new Error('Missing MONGODB_CANDIDATES_COLLECTION');
+    }
     const col = db.collection(cfg.mongodbCandidatesCollection);
     const values = await col.distinct('professional.designation', {
       'professional.designation': { $type: 'string', $ne: '' }
@@ -220,7 +237,11 @@ app.get('/api/candidates/designations', async (req, res) => {
     return res.json({ items, limit, total: items.length });
   } catch (err) {
     logger.error({ err }, 'designation list failed');
-    return res.status(500).json({ message: 'Designation list failed' });
+    const status = isMongoConfigError(err) ? 503 : 500;
+    return res.status(status).json({
+      message: 'Designation list failed',
+      error: String(err?.message || err)
+    });
   }
 });
 
@@ -337,8 +358,9 @@ app.post('/api/excel/ingest', async (req, res) => {
   (async () => {
     jobs.set(jobId, { ...jobs.get(jobId), status: 'running', startedAt: new Date().toISOString() });
 
-    const client = await connectMongo({ mongodbUri: cfg.mongodbUri });
+    let client = null;
     try {
+      client = await connectMongo({ mongodbUri: cfg.mongodbUri });
       const db = client.db(cfg.mongodbDb);
 
       const candidateRepository = new MongoCandidateRepository({
@@ -380,7 +402,11 @@ app.post('/api/excel/ingest', async (req, res) => {
         errorMessage: err?.message ? String(err.message) : String(err)
       });
     } finally {
-      await client.close();
+      try {
+        if (client) await client.close();
+      } catch {
+        // ignore
+      }
     }
   })();
 
@@ -432,6 +458,9 @@ app.get('/api/candidates', async (req, res) => {
 
   try {
     const db = await getMongoDb();
+    if (!cfg.mongodbCandidatesCollection) {
+      throw new Error('Missing MONGODB_CANDIDATES_COLLECTION');
+    }
     const col = db.collection(cfg.mongodbCandidatesCollection);
 
     const total = await col.countDocuments(filter);
@@ -454,7 +483,11 @@ app.get('/api/candidates', async (req, res) => {
     return res.json({ items, limit, offset, total });
   } catch (err) {
     logger.error({ err }, 'candidate query failed');
-    return res.status(500).json({ message: 'Query failed' });
+    const status = isMongoConfigError(err) ? 503 : 500;
+    return res.status(status).json({
+      message: 'Query failed',
+      error: String(err?.message || err)
+    });
   }
 });
 

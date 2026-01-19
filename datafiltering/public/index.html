@@ -5,29 +5,106 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Excel Upload → Preview → Ingest to MongoDB Atlas</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #111; }
-      .card { max-width: 980px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
-      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-      input[type=file] { padding: 8px; border: 1px solid #e5e7eb; border-radius: 8px; }
-      button { padding: 10px 14px; border-radius: 10px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; }
-      button.primary { background: #111827; color: #fff; border-color: #111827; }
-      button:disabled { opacity: .5; cursor: not-allowed; }
-      .muted { color: #6b7280; font-size: 14px; }
-      .status { margin-top: 10px; padding: 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; white-space: pre-wrap; }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 12px;
-        font-size: 13px;
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --border: #e5e7eb;
+        --border-strong: #d1d5db;
+        --text: #0f172a;
+        --muted: #64748b;
+        --muted2: #94a3b8;
+        --primary: #111827;
+        --primarySoft: #e5e7eb;
+        --focus: rgba(59, 130, 246, 0.35);
+        --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
       }
 
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        margin: 24px;
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      h2 { margin: 0 0 8px 0; font-weight: 700; letter-spacing: -0.02em; }
+
+      .card {
+        max-width: 1100px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+
+      .muted { color: var(--muted); font-size: 14px; }
+
+      .status {
+        margin-top: 10px;
+        padding: 10px 12px;
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        white-space: pre-wrap;
+      }
+
+      /* Inputs */
+      input[type=file] {
+        padding: 8px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      input[type=text], select {
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        outline: none;
+        min-width: 180px;
+        box-shadow: var(--shadow);
+      }
+
+      input[type=text]:focus, select:focus {
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 4px var(--focus);
+      }
+
+      /* Buttons */
+      button {
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--border-strong);
+        background: #fff;
+        cursor: pointer;
+        box-shadow: var(--shadow);
+      }
+
+      button:hover { background: #f8fafc; }
+
+      button.primary {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+      }
+
+      button.primary:hover { filter: brightness(1.05); }
+
+      button:disabled { opacity: .5; cursor: not-allowed; }
+
+      /* Flowbite-like table shell */
       .tablewrap {
         width: 100%;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
         margin-top: 12px;
+        background: var(--card);
+        box-shadow: var(--shadow);
       }
 
       .tablewrap table {
@@ -42,9 +119,58 @@
         text-overflow: ellipsis;
       }
 
-      th, td { border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; font-size: 14px; }
-      th { background: #f9fafb; }
-      .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #e5e7eb; font-size: 12px; }
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 13px;
+      }
+
+      thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #f8fafc;
+        border-bottom: 1px solid var(--border);
+        font-weight: 600;
+        color: #334155;
+      }
+
+      th, td {
+        border-bottom: 1px solid var(--border);
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+        font-size: 13px;
+      }
+
+      tbody tr:nth-child(odd) td { background: #ffffff; }
+      tbody tr:nth-child(even) td { background: #fbfdff; }
+      tbody tr:hover td { background: #f1f5f9; }
+
+      .pill {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 12px;
+        background: #fff;
+        color: #334155;
+      }
+
+      .card {
+max-width: 100%;
+background: var(--card);
+border: 1px solid var(--border);
+border-radius: 14px;
+padding: 16px;
+box-shadow: var(--shadow);
+}
+
+      #dropzone {
+        background: #f8fafc !important;
+        border: 1px dashed var(--border-strong) !important;
+      }
     </style>
   </head>
   <body>
@@ -60,7 +186,7 @@
         <button id="btnUpload" class="primary">Upload</button>
         <button id="btnPreview" disabled>Preview</button>
         <button id="btnIngest" disabled>Ingest to MongoDB</button>
-        <input id="sheetName" placeholder="Sheet name (optional)" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="sheetName" placeholder="Sheet name (optional)" />
       </div>
 
       <div style="margin-top: 12px; padding: 12px; border: 1px dashed #d1d5db; border-radius: 12px; background: #fafafa;" id="dropzone">
@@ -78,10 +204,10 @@
       <hr style="margin: 16px 0; border: none; border-top: 1px solid #e5e7eb;" />
 
       <div class="row">
-        <input id="qName" placeholder="Search name" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
-        <input id="qEmail" placeholder="Search email" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
-        <input id="qPhone" placeholder="Search phone" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
-        <select id="pageSize" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;">
+        <input id="qName" placeholder="Search name" />
+        <input id="qEmail" placeholder="Search email" />
+        <input id="qPhone" placeholder="Search phone" />
+        <select id="pageSize">
           <option value="50" selected>50 / page</option>
           <option value="100">100 / page</option>
           <option value="200">200 / page</option>
@@ -90,19 +216,19 @@
       </div>
 
       <div class="row" style="margin-top: 10px;">
-        <select id="qDesignation" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px; min-width: 220px;">
+        <select id="qDesignation" style="min-width: 220px;">
           <option value="">Designation (all)</option>
         </select>
-        <input id="qCompany" placeholder="Company / Hospital" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
-        <input id="qLocation" placeholder="Location" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
-        <input id="qSpecialization" placeholder="Specialization / Department" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qCompany" placeholder="Company / Hospital" />
+        <input id="qLocation" placeholder="Location" />
+        <input id="qSpecialization" placeholder="Specialization / Department" />
       </div>
 
       <div class="row" style="margin-top: 10px;">
-        <input id="qSkill" placeholder="Skill" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
-        <input id="qExpMin" placeholder="Experience min (years)" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
-        <input id="qExpMax" placeholder="Experience max (years)" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
-        <input id="qDescription" placeholder="Description contains" style="padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px;" />
+        <input id="qSkill" placeholder="Skill" />
+        <input id="qExpMin" placeholder="Experience min (years)" />
+        <input id="qExpMax" placeholder="Experience max (years)" />
+        <input id="qDescription" placeholder="Description contains" />
       </div>
 
       <div id="meta" class="status" style="display:none"></div>
